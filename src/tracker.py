@@ -1,6 +1,5 @@
 import math
 
-
 class Tracker:
     def __init__(self):
         # Store the center positions of the objects
