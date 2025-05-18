@@ -1,14 +1,10 @@
+__author__ = "Valerian Gregoire--Begranger, Maeva Jalama"
 import tkinter as tk
 from tkinter import filedialog, ttk, colorchooser, messagebox
 import os
 import cv2
-import pandas as pd
-import numpy as np
 from PIL import Image, ImageTk
-import threading
-import time
-from ultralytics import YOLO
-from object_detector import ObjectDetector
+from ObjectDetector import ObjectDetector
 
 class ObjectDetectionInterface:
     def __init__(self, root):
@@ -28,11 +24,11 @@ class ObjectDetectionInterface:
         
         # Variables
         self.video_path = tk.StringVar()
-        self.available_objects = self.load_objects()
-        self.default_video = "lib/trimmed.mp4"  # Default video path from mainh.py
+        self.default_video = "lib/trimmed.mp4"
         self.object_colors = {}  # Dictionary to store color for each object
         self.resize_timer_id = None  # Initialize the resize timer ID
-        self.object_detector = None  # Object detector instance
+        self.object_detector = ObjectDetector(self.default_video, {})
+        self.available_objects = self.object_detector.classes  # List of objects to recognize
 
         # Setup the custom theme
         self.setup_style()
@@ -112,12 +108,12 @@ class ObjectDetectionInterface:
                                style='Header.TLabel')
         title_label.pack(pady=(0, 20))
         
-        # Cards container (2 columns layout)
+        # Cards container
         cards_frame = ttk.Frame(main_frame, style='Main.TFrame')
         cards_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Left column - Video selection and preview
-        left_card = self.create_rounded_frame(cards_frame, self.card_bg)
+        # Video selection and preview
+        left_card = ttk.Frame(cards_frame, style='Card.TFrame')
         left_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
         
         # Video section title
@@ -162,7 +158,7 @@ class ObjectDetectionInterface:
         self.preview_canvas.pack(fill=tk.BOTH, expand=True)
         
         # Right column - Detection options
-        right_card = self.create_rounded_frame(cards_frame, self.card_bg)
+        right_card = ttk.Frame(cards_frame, style='Card.TFrame')
         right_card.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
         
         # Object selection title
@@ -174,15 +170,15 @@ class ObjectDetectionInterface:
         self.create_object_selection(right_card)
         
         # Stats section
-        stats_frame = ttk.Frame(right_card, style='Card.TFrame')
-        stats_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
+        self.info_frame = ttk.Frame(right_card, style='Card.TFrame')
+        self.info_frame.pack(fill=tk.X, padx=15, pady=(10, 15))
         
-        stats_title = ttk.Label(stats_frame, text="Detection Statistics", 
+        self.info_title = ttk.Label(self.info_frame, text="", 
                               style='Card.TLabel', font=('Helvetica', 12, 'bold'))
-        stats_title.pack(anchor='w', pady=(5, 10))
+        self.info_title.pack(anchor='w', pady=(5, 10))
         
         # Create a frame for statistics display
-        self.stats_display = ttk.Frame(stats_frame, style='Card.TFrame')
+        self.stats_display = ttk.Frame(self.info_frame, style='Card.TFrame')
         self.stats_display.pack(fill=tk.X, pady=(0, 10))
         
         # We'll populate this with labels dynamically when detection runs
@@ -192,7 +188,7 @@ class ObjectDetectionInterface:
         controls_frame = ttk.Frame(main_frame, style='Main.TFrame')
         controls_frame.pack(fill=tk.X, pady=(20, 0))
         
-        # Control buttons - start, pause, stop detection
+        # Control buttons
         self.start_btn = ttk.Button(controls_frame, text="Start Detection", 
                                   command=self.start_detection)
         self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -206,12 +202,7 @@ class ObjectDetectionInterface:
                                   command=self.stop_detection,
                                   state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT)
-    
-    def create_rounded_frame(self, parent):
-        """Create a frame with rounded corners using a Canvas"""
-        frame = ttk.Frame(parent, style='Card.TFrame')
-        return frame  # For now, return normal frame as Tkinter doesn't directly support rounded corners
-        
+
     def create_object_selection(self, parent):
         """Create scrollable object selection checkboxes with color pickers"""
         # Container for checkboxes with scrolling
@@ -250,7 +241,6 @@ class ObjectDetectionInterface:
         # Create checkbox and color picker for each object
         self.object_vars = {}
         for obj in self.available_objects:
-            # Generate a default color (could be randomized)
             default_color = self.generate_color_for_object(obj)
             self.object_colors[obj] = default_color
             
@@ -333,7 +323,7 @@ class ObjectDetectionInterface:
             filetypes=(("Video files", "*.mp4 *.avi *.mov"), ("All files", "*.*"))
         )
         if file_path:
-            self.video_path.set(file_path)  # Store the full path
+            self.video_path.set(file_path)
             self.preview_video(file_path)
     
     def use_default_video(self):
@@ -364,7 +354,6 @@ class ObjectDetectionInterface:
                 canvas_height = self.preview_canvas.winfo_height()
                 
                 if canvas_width > 1 and canvas_height > 1:
-                    # Resize frame to fit canvas while preserving aspect ratio
                     h, w = frame.shape[:2]
                     aspect = w / h
                     
@@ -390,16 +379,17 @@ class ObjectDetectionInterface:
         except Exception as e:
             print(f"Error previewing video: {e}")
             messagebox.showerror("Preview Error", f"Could not preview video: {e}")
-    
+
     def get_selected_objects(self):
         """Get the list of selected objects with their colors"""
         selected = {}
         for obj, var in self.object_vars.items():
             if var.get():
-                # Convert hex color to BGR tuple (OpenCV format)
+                # Convert hex color to BGR tuple
                 hex_color = self.object_colors[obj].lstrip('#')
                 r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-                selected[obj] = (b, g, r)  # BGR format for OpenCV
+                selected[obj] = {}
+                selected[obj]['color'] = (g, r, b)
         return selected
     
     def hex_to_rgb(self, hex_color):
@@ -436,48 +426,22 @@ class ObjectDetectionInterface:
         
         # Start detection thread
         self.object_detector = ObjectDetector(video_path, selected_objects)
-        
-        # Create or update statistics labels
-        self.update_stats_display()
-    
-    def update_stats_display(self):
-        """Create or update the statistics display"""
-        # Clear existing labels
-        for widget in self.stats_display.winfo_children():
-            widget.destroy()
-        
-        # Create labels for each selected object
-        self.stats_labels = {}
-        row = 0
-        for obj in self.object_counts.keys():
-            # Object name label
-            obj_label = ttk.Label(self.stats_display, text=f"{obj}:", 
-                                style='Card.TLabel')
-            obj_label.grid(row=row, column=0, sticky='w', padx=(5, 10), pady=2)
-            
-            # Count label
-            count_label = ttk.Label(self.stats_display, text="0", 
-                                  style='Card.TLabel')
-            count_label.grid(row=row, column=1, sticky='w')
-            
-            # Store reference
-            self.stats_labels[obj] = count_label
-            row += 1
-    
-    def update_stats(self):
-        """Update the statistics labels with current counts"""
-        for obj, count in self.object_counts.items():
-            if obj in self.stats_labels:
-                self.stats_labels[obj].config(text=str(count))
-    
+        self.object_detector.start_detection()
+        self.update_preview(self.object_detector.current_frame)
+
+        self.info_title.config(text="Starting detection...")
+        self.root.after(5000, lambda: self.info_title.config(text="Detection in progress..."))
+
     def toggle_pause_detection(self):
         """Pause or resume the detection process"""
         if self.object_detector.is_paused():
             self.pause_btn.config(text="Pause")
             self.object_detector.resume_detection()
+            self.info_title.config(text="Detection in progress...")
         else:
             self.pause_btn.config(text="Resume")
             self.object_detector.pause_detection()
+            self.info_title.config(text="Detection paused...")
     
     def stop_detection(self):
         """Stop the object detection process"""
@@ -488,9 +452,31 @@ class ObjectDetectionInterface:
         self.pause_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.DISABLED)
 
+        self.info_title.config(text="Detection stopped")
+        self.root.after(5000, lambda: self.info_title.config(text=""))
+
     def update_preview(self, frame):
         """Update the preview canvas with a new frame"""
         try:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Get canvas dimensions
+            canvas_width = self.preview_canvas.winfo_width()
+            canvas_height = self.preview_canvas.winfo_height()
+            
+            if canvas_width > 1 and canvas_height > 1:
+                h, w = frame.shape[:2]
+                aspect = w / h
+                
+                if canvas_width / canvas_height > aspect:
+                    new_h = canvas_height
+                    new_w = int(aspect * new_h)
+                else:
+                    new_w = canvas_width
+                    new_h = int(new_w / aspect)
+                
+                frame = cv2.resize(frame, (new_w, new_h))
+
             # Create PhotoImage from frame
             img = Image.fromarray(frame)
             photo = ImageTk.PhotoImage(image=img)
@@ -501,14 +487,21 @@ class ObjectDetectionInterface:
             
             # Update canvas
             self.preview_canvas.delete("all")
+            self.preview_photo = photo
             self.preview_canvas.create_image(
                 canvas_width // 2, canvas_height // 2,
-                image=photo, anchor=tk.CENTER
+                image=self.preview_photo, anchor=tk.CENTER
             )
-            
+
         except Exception as e:
             print(f"Error updating preview: {e}")
-    
+        
+        # Create or update statistics labels
+        if self.object_detector.is_complete() or not self.object_detector.is_running():
+            self.stop_detection()
+            return
+        self.root.after(220, lambda: self.update_preview(self.object_detector.current_frame))
+
     def handle_resize(self, event):
         """Handle window resize events with proper timer handling"""
         # Cancel previous timer if it exists
@@ -516,48 +509,17 @@ class ObjectDetectionInterface:
             try:
                 self.root.after_cancel(self.resize_timer_id)
             except ValueError:
-                # If timer ID is not valid, just ignore the error
                 pass
         
         # Set a new timer
         if hasattr(self, 'video_path') and self.video_path.get():
             self.resize_timer_id = self.root.after(100, lambda: self.preview_video(self.video_path.get()))
-    
-    def save_selection(self):
-        """Save the current selection (video and objects with colors)"""
-        selected_objects = self.get_selected_objects()
-        
-        if not selected_objects:
-            self.show_message("Warning", "Please select at least one object to detect")
-            return
-            
-        if not self.video_path.get():
-            self.show_message("Warning", "Please select a video file")
-            return
-        
-        # Display the selection (in a real app, you would save or process this data)
-        selection_info = f"Video: {self.video_path.get()}\n\nSelected Objects:"
-        for obj, color in selected_objects.items():
-            # Convert BGR back to hex for display
-            b, g, r = color
-            hex_color = f"#{r:02x}{g:02x}{b:02x}"
-            selection_info += f"\n• {obj} ({hex_color})"
-        
-        self.show_message("Selection Saved", selection_info)
-    
-    def show_message(self, title, message):
-        """Show a custom styled message box"""
-        # For now, use the standard messagebox
-        messagebox.showinfo(title, message)
 
-if __name__ == "__main__":
-    # Check for required files
-        
+
+if __name__ == "__main__":        
     # Start the app
     root = tk.Tk()
     app = ObjectDetectionInterface(root)
-    
-    # Bind the resize event to our improved resize handler
     root.bind("<Configure>", app.handle_resize)
     
     root.mainloop()

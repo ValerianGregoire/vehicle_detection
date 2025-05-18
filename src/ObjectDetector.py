@@ -1,10 +1,11 @@
+__author__ = "Valerian Gregoire--Begranger, Maeva Jalama"
 import cv2
 import time
 import threading
 from ultralytics import YOLO
 
 class ObjectDetector:
-    def __init__(self, video_path: str, selected_objects: list):
+    def __init__(self, video_path: str, selected_objects: dict):
         self.model = YOLO('lib/yolov8s.pt')
         self.classes = list(self.model.names.values())
         self.video_path = video_path
@@ -40,8 +41,6 @@ class ObjectDetector:
             if not ret: # If end of video reached
                 break
             frame_count += 1
-            # Resize frame for processing
-            frame = cv2.resize(frame, (540, 540))
             # Predict objects using YOLOv8
             results = self.model.predict(frame)
             self.detection_data[frame_count] = results
@@ -92,10 +91,9 @@ class ObjectDetector:
         self.detection_running = False
         if self.detection_thread is not None:
             self.detection_thread = None
-        self.current_frame = None
 
 if __name__ == "__main__":
-    video_path = 'lib/trimmed2.mp4'
+    video_path = 'lib/st_bart_landing.mp4'
     selected_objects = {
         'car': {'color': (0, 255, 0)},
         'truck': {'color': (0, 0, 255)},
@@ -107,7 +105,8 @@ if __name__ == "__main__":
     
     while True:
         if detector.current_frame is not None:
-            cv2.imshow('Object Detection', detector.current_frame)
+
+            cv2.imshow('Object Detection', cv2.resize(detector.current_frame, (512, 512)))
         
         key = cv2.waitKey(1)
         if key == ord('q'):
