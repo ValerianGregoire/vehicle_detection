@@ -31,7 +31,7 @@ class Tracker:
                     same_object_detected = True
                     break
 
-            # New object is detected we assign the ID to that object
+            # Assign an ID to new objects
             if same_object_detected is False:
                 self.center_points[self.id_count] = (cx, cy)
                 objects_bbs_ids.append([x, y, w, h, self.id_count])

@@ -2,22 +2,21 @@ import cv2
 import pandas as pd
 from ultralytics import YOLO
 import cvzone
-from tracker import *  # Ensure the Tracker class is defined correctly in tracker.py
+from tracker import *
 import numpy as np
 
 # Load the YOLO model
 model = YOLO('lib/yolov8s.pt')
 
-# Function to print the mouse position in RGB window
-def RGB(event, x, y, flags, param):
-    if event == cv2.EVENT_MOUSEMOVE:
-        point = [x, y]
-        print(point)
 
-# Create a named window and set a mouse callback function
-cv2.namedWindow('RGB')
-cv2.setMouseCallback('RGB', RGB)
-cap = cv2.VideoCapture('lib/trimmed.mp4')  # Initialize video capture with the video file
+win_name = 'ML Project (YOLOv8) - V. GREGOIRE--BEGRANGER, M. JALAMA'
+cv2.namedWindow(win_name)
+
+cap = cv2.VideoCapture('lib/st_bart_landing.mp4')  # Initialize video capture with the video file
+
+# Get the width and height of the video frame
+width = int(int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))/2)
+height = int(int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))/2)
 
 # Open the 'coco.txt' file containing class names and read its content
 with open("lib/coco.txt", "r") as my_file:
@@ -25,9 +24,6 @@ with open("lib/coco.txt", "r") as my_file:
 
 # Initialize counters and trackers
 count = 0
-car_count = 0
-bus_count = 0
-truck_count = 0
 tracker = Tracker()
 cy1 = 184
 cy2 = 209
@@ -50,9 +46,9 @@ while True:
     if not ret:  # If no frame is read (end of video), break the loop
         break
     count += 1  # Increment frame count
-    if count % 3 != 0:  # Process every third frame
+    if count % 2 != 0:  # Process every few frames
         continue
-    frame = cv2.resize(frame, (1020, 500))  # Resize the frame for consistent processing
+    frame = cv2.resize(frame, (width, height))  # Resize the frame for consistent processing
 
     # Predict objects in the frame using YOLO model
     results = model.predict(frame)
@@ -74,7 +70,7 @@ while True:
     for key in classes:
         classes[key]['bbox'] = tracker.update(classes[key]['coords'])
 
-    # Check each car, bus, and truck
+    # Check each class 
     for class_, value in classes.items():
         for bbox in value['bbox']:
             cx = int((bbox[0] + bbox[2]) / 2)
@@ -87,8 +83,7 @@ while True:
         # # Print the total count for each vehicle type
         # print('Total {class_} count: {count}'.format(class_=class_, count=classes[class_]['count']))
     
-    # Display the frame in the 'RGB' window
-    cv2.imshow("RGB", frame)
+    cv2.imshow(win_name, frame)
     if cv2.waitKey(1) & 0xFF == 27:  # Break the loop if 'Esc' key is pressed
         break
 
